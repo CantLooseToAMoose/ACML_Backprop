@@ -12,7 +12,6 @@ def initializeNetworkWeights(scale=0.01):
     return W, b
 
 
-
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
@@ -46,18 +45,20 @@ def getDeltas(z_list, Y, W):
             delta_list.append(delta)
         else:
             z = z_list[i]
-            delta = np.matmul(delta_list[len(delta_list)-1],W[i+1]) * sigmoidPrime(z)
+            delta = np.matmul(delta_list[len(delta_list) - 1], W[i + 1]) * sigmoidPrime(z)
+            # delta = np.matmul(W[i + 1].T, delta_list[len(delta_list) - 1]).T*sigmoidPrime(z)
             delta_list.append(delta)
     return delta_list
 
-#Backpropagate
+
+# Backpropagate
 def backprop(X, Y, W, b, learning_rate=0.03, weightDecay=0.01):
     a, zlist = forward(X, W, b)
     delta_list = getDeltas(zlist, Y, W)
     # Dont average here!!
     # delta_list = [np.average(x, axis=0) for x in delta_list]
     delta_list = list(reversed(delta_list))
-    a_list=[sigmoid(x) for x in zlist]
+    a_list = [sigmoid(x) for x in zlist]
     a_list.insert(0, np.array(X))
     a_list = [x.reshape(x.shape[0], 1, x.shape[1]) for x in a_list]
     delta_list = [x.reshape(x.shape[0], x.shape[1], 1) for x in delta_list]
@@ -66,13 +67,12 @@ def backprop(X, Y, W, b, learning_rate=0.03, weightDecay=0.01):
         derivativeW = np.average(derivativeW, axis=0)
         # Average here!!
         W[i] = W[i] - learning_rate * derivativeW - W[i] * (weightDecay / len(X))
-        b[i] = b[i] - learning_rate * np.average(delta_list[i],axis=0).reshape(-1)
+        b[i] = b[i] - learning_rate * np.average(delta_list[i], axis=0).reshape(-1)
     return W, b
 
 
-
 # Batch Gradient Descent
-def batch_GD(X, Y, epoch=20000, learning_rate=0.003, weightDecay=0.01, scale=0.1):
+def batch_GD(X, Y, epoch=20000, learning_rate=0.003, weightDecay=0.1, scale=0.1):
     W, b = initializeNetworkWeights(scale)
     print(W)
     print(b)
@@ -85,9 +85,11 @@ def batch_GD(X, Y, epoch=20000, learning_rate=0.003, weightDecay=0.01, scale=0.1
         a, z_list = forward(X, W, b)
         print(a)
         print(mean_half_sum_squared(a, Y))
+    return W, b
+
 
 # Batch Gradient Descent
-def stochastic_GD(X, Y, epoch=20000, learning_rate=0.003, weightDecay=0.01, scale=0.1,sample_size=1):
+def stochastic_GD(X, Y, epoch=20000, learning_rate=0.003, weightDecay=0.01, scale=0.1, sample_size=1):
     W, b = initializeNetworkWeights(scale)
 
     print(W)
@@ -100,6 +102,8 @@ def stochastic_GD(X, Y, epoch=20000, learning_rate=0.003, weightDecay=0.01, scal
         a, z_list = forward(X, W, b)
         print(a)
         print(mean_half_sum_squared(a, Y))
+    return W, b
+
 
 if __name__ == '__main__':
     # Initiliaze the Data
@@ -108,5 +112,7 @@ if __name__ == '__main__':
         X[i, i] = 1
     Y = np.array(X)
 
-    W,b = initializeNetworkWeights()
-    stochastic_GD(X, Y, epoch=20000, learning_rate=0.3, weightDecay=0.1,scale=0.3)
+    W, b = initializeNetworkWeights()
+    W, b = batch_GD(X, Y, epoch=20000, learning_rate=0.3, weightDecay=0.001, scale=0.3)
+    a, zlist = forward(X, W, b)
+    print(np.argmax(a, axis=1))
