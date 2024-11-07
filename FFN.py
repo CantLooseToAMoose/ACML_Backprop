@@ -101,8 +101,8 @@ def stochastic_GD(X, Y, epoch=20000, learning_rate=0.003, weightDecay=0.01, scal
         random_indices = np.random.choice(X.shape[0], size=sample_size, replace=False)
         W, b = backprop(X[random_indices], Y[random_indices], W, b, learning_rate, weightDecay)
         a, z_list = forward(X, W, b)
-        if i % 100 == 0:
-            print("hi")
+        #if i % 100 == 0:
+            #print("hi")
         # print(a)
         print(mean_half_sum_squared(a, Y))
     return W, b
@@ -123,14 +123,14 @@ if __name__ == '__main__':
     Y = np.array(X)
     # W, b = stochastic_GD(X, Y, epoch=200000, learning_rate=0.003, weightDecay=1, scale=0.1)
     # print(W[0])
-    W, b = stochastic_GD(X, Y, epoch=2000000, learning_rate=0.3, weightDecay=0.00001, scale=0.1)
+    W, b = stochastic_GD(X, Y, epoch=200000, learning_rate=0.3, weightDecay=0.00001, scale=0.1)
     fig, ax = plt.subplots(2)
     ax[0].imshow(W[0])
     ax[1].imshow(W[1])
     plt.show()
 
     W, b = initializeNetworkWeights()
-    W, b = stochastic_GD(X, Y, epoch=2000000, learning_rate=0.003, weightDecay=0.00000, scale=0.3,sample_size=8)
+    W, b = stochastic_GD(X, Y, epoch=200000, learning_rate=0.003, weightDecay=0.00000, scale=0.3,sample_size=8)
     a, zlist = forward(X, W, b)
     print(np.argmax(a, axis=1))
     print(accuracy(X, Y, W, b))
