@@ -11,6 +11,7 @@ torch.manual_seed(42)
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import numpy as np
+from PIL import Image
 
 
 # Custom Dataset wrapper for return the original image as label
@@ -55,12 +56,14 @@ class ChrominanceEncoderDataset(Dataset):
         yuv_image = color_image_pil.convert("YCbCr")
         y, u, v = yuv_image.split()  # Split into luminance (Y) and chrominance (Cb, Cr)
 
-        # Convert to tensors
+        # Convert to tensors and normalize UV channels to [-1, 1]
         y_tensor = transforms.ToTensor()(y)  # Grayscale (Luminance) with single channel
         uv_tensor = torch.stack([transforms.ToTensor()(u), transforms.ToTensor()(v)], dim=0)
-        uv_tensor=uv_tensor.squeeze()# Chrominance with 2 channels (UV)
+        uv_tensor = uv_tensor.squeeze()  # Chrominance with 2 channels (UV)
+        uv_tensor = (uv_tensor - 0.5) * 2.0  # Normalize to [-1, 1]
 
         return y_tensor, uv_tensor  # Input: Y (1 channel), Target: UV (2 channels)
+
 
 
 
@@ -231,12 +234,8 @@ class CAE_1_Color(nn.Module):
         return self.decoder(x)
 
 class CAE_Chrominance(nn.Module):
-    """
-    Encoder-decoder for predicting chrominance (UV) channels from grayscale (Y).
-    """
     def __init__(self):
         super(CAE_Chrominance, self).__init__()
-        # Define Encoder
         self.encoder = nn.Sequential(
             nn.Conv2d(1, 8, 3, padding=1, stride=2),  # Grayscale input (1 channel)
             nn.ReLU(),
@@ -252,8 +251,9 @@ class CAE_Chrominance(nn.Module):
             nn.ConvTranspose2d(12, 8, 3, padding=1, stride=2, output_padding=1),
             nn.ReLU(),
             nn.Conv2d(8, 2, 3, padding=1),  # Predict 2 channels (UV)
-            nn.Sigmoid()
+            nn.Tanh()  # Use Tanh activation for outputs in [-1, 1]
         )
+
 
     def forward(self, x):
         x = self.encoder(x)
@@ -379,49 +379,27 @@ import matplotlib.colors as mcolors
 
 
 def reconstruct_color_image(grayscale, predicted_uv):
-    """
-    Reconstruct a full color image from the grayscale (Y) and predicted chrominance (UV) channels.
-
-    Args:
-        grayscale (Tensor): The grayscale image (Y channel), shape (1, H, W).
-        predicted_uv (Tensor): The predicted chrominance channels (UV), shape (2, H, W).
-
-    Returns:
-        Image: The reconstructed color image in RGB format.
-    """
     # Convert grayscale and predicted_uv to numpy arrays (H, W)
-    y_channel = grayscale.detach().numpy()[0]*255
-    u_channel = predicted_uv.detach().numpy()[0]*255
-    v_channel = predicted_uv.detach().numpy()[1]*255
+    y_channel = grayscale.detach().numpy()[0] * 255  # [0, 255]
+    u_channel = predicted_uv.detach().numpy()[0] * 127.5 + 128  # [-1, 1] -> [0, 255]
+    v_channel = predicted_uv.detach().numpy()[1] * 127.5 + 128  # [-1, 1] -> [0, 255]
 
     # Stack Y, U, V channels into the YCbCr color space
     yuv_image = np.stack((y_channel, u_channel, v_channel), axis=-1)
 
-    # Define the YCbCr to RGB transformation
-    # The formula for converting YCbCr to RGB is as follows:
-    # R = Y + 1.402 * (V - 128)
-    # G = Y - 0.344136 * (U - 128) - 0.714136 * (V - 128)
-    # B = Y + 1.772 * (U - 128)
-    transform_matrix = np.array([[1.0, 0.0, 1.402],
-                                 [1.0, -0.344136, -0.714136],
-                                 [1.0, 1.772, 0.0]])
+    # Convert YCbCr to RGB
+    yuv_image = yuv_image.astype(np.uint8)
+    yuv_image_pil = Image.fromarray(yuv_image, 'YCbCr')
+    rgb_image_pil = yuv_image_pil.convert('RGB')
+    rgb_image = np.array(rgb_image_pil)
 
-    # Offset for U and V channels
-    uv_offset = np.array([0, 128, 128])
-
-    # Apply the transformation
-    rgb_image = yuv_image - uv_offset
-    rgb_image = np.dot(rgb_image, transform_matrix.T)
-
-    # Clip values to ensure they're in the valid range for RGB (0-255)
-    rgb_image = np.clip(rgb_image, 0, 255).astype(np.uint8)
-
-    # Display the reconstructed image using matplotlib
+    # Display the reconstructed image
     plt.imshow(rgb_image)
     plt.axis('off')  # Hide axes
     plt.show()
 
     return rgb_image
+
 
 
 def compute_test_error(model, test_loader, criterion):
@@ -452,19 +430,26 @@ if __name__ == '__main__':
     model, history_loss = train_model(CAE_Chrominance, train_loader, model_path="cae_chrominance.pth",
                                       loss_history_path="cae_chrominance_loss.png")
 
-    # model=load_model("cae_chrominance.pth",CAE_Chrominance)
-    model=model.cpu()
-    grayscale, _ = train_loader.dataset[0]  # Grayscale input
-    predicted_uv = model(grayscale)
-    plt.imshow(grayscale[0],cmap="grey")
-    plt.show()# Predict UV channels
-    plt.imshow(predicted_uv.detach().numpy()[0],cmap="grey")
-    plt.show()
-    plt.imshow(predicted_uv.detach().numpy()[1],cmap="grey")
-    plt.show()
+    # Move model to CPU for inference
+    model = model.cpu()
+    model.eval()
+
+    # Get a sample from the test loader
+    grayscale, _ = test_loader.dataset[0]  # Grayscale input
+    grayscale = grayscale.unsqueeze(0)  # Add batch dimension
+
+    # Predict UV channels
+    with torch.no_grad():
+        predicted_uv = model(grayscale)
+
+    # Remove batch dimension for visualization
+    grayscale = grayscale.squeeze(0)
+    predicted_uv = predicted_uv.squeeze(0)
+
+    # Reconstruct the color image
     color_image = reconstruct_color_image(grayscale, predicted_uv)
-    plt.imshow(color_image)
-    plt.show()
+
+    # Compute test error
     criterion = nn.MSELoss()
     test_error = compute_test_error(model, test_loader, criterion)
     print(f'Test Error (MSE Loss): {test_error:.4f}')
