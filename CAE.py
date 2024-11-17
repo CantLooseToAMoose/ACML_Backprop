@@ -24,6 +24,19 @@ class AutoencoderDataset(Dataset):
         return image, image  # Return the image as both input and target
 
 
+def save_Model(model, path):
+    torch.save(model.state_dict(), path)
+    print('Model saved at {}'.format(path))
+
+
+def load_Model(path):
+    loaded_model = SimpleCAE().to(device)
+    loaded_model.load_state_dict(torch.load(path))
+    loaded_model.eval()  # Set the model to evaluation mode
+    print("Model loaded and ready for inference.")
+    return loaded_model
+
+
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(torch.cuda.is_available())
@@ -154,7 +167,7 @@ if __name__ == '__main__':
                 running_loss = 0.0
         loss_history.append(epoch_loss / len(train_loader))
     print('Finished Training')
-
+    save_Model(model,"CAE_from_Assignment.pth")
     print("Plot Loss History during Training")
     import matplotlib.pyplot as plt
 
@@ -162,6 +175,5 @@ if __name__ == '__main__':
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.title('Training Loss History')
+    plt.savefig('loss_history_simple_CAE.png')
     plt.show()
-
-

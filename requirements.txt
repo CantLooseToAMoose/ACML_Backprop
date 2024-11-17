@@ -3,4 +3,3 @@ matplotlib
 torch
 torchvision
 tqdm
--f https://download.pytorch.org/whl/cu111/torch_stable.html
