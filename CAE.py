@@ -13,8 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 
-
-# Custom Dataset wrapper for return the original image as label
+'''Dataset for our standard rgb to rgb autoencoder: returns images as both inputs and targets'''
 class AutoencoderDataset(Dataset):
     def __init__(self, original_dataset):
         self.dataset = original_dataset
@@ -23,24 +22,24 @@ class AutoencoderDataset(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        image, _ = self.dataset[idx]  # Ignore the label
-        return image, image  # Return the image as both input and target
+        image, _ = self.dataset[idx]  
+        return image, image  
 
+'''Dataset for our grayscale to rgb autoencoder: inputs are grayscale images, targets are color images'''
 class ColorEncoderDataset(Dataset):
     def __init__(self, dataset):
         self.dataset = dataset
-        self.to_grayscale = transforms.Grayscale(num_output_channels=1)  # Grayscale transformation
+        self.to_grayscale = transforms.Grayscale(num_output_channels=1) 
 
     def __len__(self):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        color_image, _ = self.dataset[idx]  # Original color image
-        # Convert to grayscale and return tensors
-        grayscale_image = self.to_grayscale(transforms.ToPILImage()(color_image))  # Convert tensor to PIL and then grayscale
-        return transforms.ToTensor()(grayscale_image), color_image  # Grayscale input, original color output
+        color_image, _ = self.dataset[idx]  
+        grayscale_image = self.to_grayscale(transforms.ToPILImage()(color_image))  
+        return transforms.ToTensor()(grayscale_image), color_image  
 
-
+'''Dataset for our chrominance autoencoder: inputs are luminance and targets are chrominance'''
 class ChrominanceEncoderDataset(Dataset):
     def __init__(self, dataset):
         self.dataset = dataset
@@ -49,20 +48,19 @@ class ChrominanceEncoderDataset(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        color_image, _ = self.dataset[idx]  # Original color image (Tensor)
-        color_image_pil = transforms.ToPILImage()(color_image)  # Convert tensor to PIL Image
+        color_image, _ = self.dataset[idx] 
+        color_image_pil = transforms.ToPILImage()(color_image)  
 
-        # Convert to YUV color space
         yuv_image = color_image_pil.convert("YCbCr")
-        y, u, v = yuv_image.split()  # Split into luminance (Y) and chrominance (Cb, Cr)
+        y, u, v = yuv_image.split()  
 
         # Convert to tensors and normalize UV channels to [-1, 1]
-        y_tensor = transforms.ToTensor()(y)  # Grayscale (Luminance) with single channel
+        y_tensor = transforms.ToTensor()(y)  # Grayscale (Luminance)
         uv_tensor = torch.stack([transforms.ToTensor()(u), transforms.ToTensor()(v)], dim=0)
         uv_tensor = uv_tensor.squeeze()  # Chrominance with 2 channels (UV)
-        uv_tensor = (uv_tensor - 0.5) * 2.0  # Normalize to [-1, 1]
+        uv_tensor = (uv_tensor - 0.5) * 2.0  
 
-        return y_tensor, uv_tensor  # Input: Y (1 channel), Target: UV (2 channels)
+        return y_tensor, uv_tensor  
 
 
 
@@ -72,12 +70,11 @@ import torch.nn as nn
 
 import torch.optim as optim
 
-
+'''Simple Convolutional Autoencoder with symmetric encoder and decoder'''
 # Define a simple CNN model
 class SimpleCAE(nn.Module):
     def __init__(self):
         super(SimpleCAE, self).__init__()
-        # Define Encoder
         self.encoder = nn.Sequential(
             nn.Conv2d(3, 8, 3, padding=1),
             nn.ReLU(),
@@ -88,7 +85,6 @@ class SimpleCAE(nn.Module):
             nn.Conv2d(12, 16, 3, padding=1),
             nn.ReLU()
         )
-        # Define Decoder
         self.decoder = nn.Sequential(
             nn.Upsample(scale_factor=2, mode="nearest"),
             nn.Conv2d(16, 12, 3, padding=1),
@@ -119,7 +115,6 @@ class CAE_1(nn.Module):
     """
     def __init__(self):
         super(CAE_1, self).__init__()
-        # Define Encoder
         self.encoder = nn.Sequential(
             nn.Conv2d(3, 8, 3, padding=1, stride=2),
             nn.ReLU(),
@@ -128,13 +123,12 @@ class CAE_1(nn.Module):
             nn.Conv2d(12, 16, 3, padding=1),
             nn.ReLU()
         )
-        # Define Decoder
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(16, 12, 3, padding=1,stride=2, output_padding=1),  # Doubles spatial dimensions
             nn.ReLU(),
-            nn.ConvTranspose2d(12, 8, 3, padding=1,stride=2, output_padding=1),  # Doubles spatial dimensions
+            nn.ConvTranspose2d(12, 8, 3, padding=1,stride=2, output_padding=1),  
             nn.ReLU(),
-            nn.Conv2d(8, 3, 3, padding=1),  # Doubles spatial dimensions
+            nn.Conv2d(8, 3, 3, padding=1),  
             nn.Sigmoid()
         )
 
@@ -158,7 +152,6 @@ class CAE_2(nn.Module):
     """
     def __init__(self):
         super(CAE_2, self).__init__()
-        # Define Encoder
         self.encoder = nn.Sequential(
             nn.Conv2d(3, 8, 3, padding=1),
             nn.ReLU(),
@@ -169,7 +162,6 @@ class CAE_2(nn.Module):
             nn.Conv2d(12, 4, 3, padding=1),
             nn.ReLU()
         )
-        # Define Decoder
         self.decoder = nn.Sequential(
             nn.Upsample(scale_factor=2, mode="nearest"),
             nn.Conv2d(4, 12, 3, padding=1),
@@ -193,14 +185,13 @@ class CAE_2(nn.Module):
     def decode(self, x):
         return self.decoder(x)
 
-
+'''Convolutional Autoencoder for grayscale-to-color conversion using same architecture we found in 2'''
 class CAE_1_Color(nn.Module):
     """
     Same Latent space but more informed Dimensionality Reduction and Increase and modified for single channel
     """
     def __init__(self):
         super(CAE_1_Color, self).__init__()
-        # Define Encoder
         self.encoder = nn.Sequential(
             nn.Conv2d(1, 8, 3, padding=1, stride=2),
             nn.ReLU(),
@@ -209,13 +200,12 @@ class CAE_1_Color(nn.Module):
             nn.Conv2d(12, 16, 3, padding=1),
             nn.ReLU()
         )
-        # Define Decoder
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(16, 12, 3, padding=1,stride=2, output_padding=1),  # Doubles spatial dimensions
             nn.ReLU(),
-            nn.ConvTranspose2d(12, 8, 3, padding=1,stride=2, output_padding=1),  # Doubles spatial dimensions
+            nn.ConvTranspose2d(12, 8, 3, padding=1,stride=2, output_padding=1),  
             nn.ReLU(),
-            nn.Conv2d(8, 3, 3, padding=1),  # Doubles spatial dimensions
+            nn.Conv2d(8, 3, 3, padding=1),  
             nn.Sigmoid()
         )
 
@@ -233,6 +223,7 @@ class CAE_1_Color(nn.Module):
     def decode(self, x):
         return self.decoder(x)
 
+'''Convolutional Autoencoder for predicting chrominance components from luminance using mainly the same architecture we found in 2'''
 class CAE_Chrominance(nn.Module):
     def __init__(self):
         super(CAE_Chrominance, self).__init__()
@@ -244,14 +235,13 @@ class CAE_Chrominance(nn.Module):
             nn.Conv2d(12, 16, 3, padding=1),
             nn.ReLU()
         )
-        # Define Decoder
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(16, 12, 3, padding=1, stride=2, output_padding=1),
             nn.ReLU(),
             nn.ConvTranspose2d(12, 8, 3, padding=1, stride=2, output_padding=1),
             nn.ReLU(),
-            nn.Conv2d(8, 2, 3, padding=1),  # Predict 2 channels (UV)
-            nn.Tanh()  # Use Tanh activation for outputs in [-1, 1]
+            nn.Conv2d(8, 2, 3, padding=1),  
+            nn.Tanh()  
         )
 
 
@@ -269,19 +259,18 @@ def save_model(model, path):
 def load_model(path, model_class):
     loaded_model = model_class()
     loaded_model.load_state_dict(torch.load(path))
-    loaded_model.eval()  # Set the model to evaluation mode
+    loaded_model.eval()  
     print("Model loaded and ready for inference.")
     return loaded_model
-    # Helper function to show an image
-
+    
 
 def imshow(img):
-    img = img  # unnormalize
+    img = img  
     npimg = img.numpy()
     plt.imshow(np.transpose(npimg, (1, 2, 0)))
     plt.show()
 
-
+'''Creates and returns data loaders for training and testing given each respective EncoderType'''
 def get_DataLoaders(EncoderType):
     transform = transforms.Compose([
         transforms.ToTensor()
@@ -314,7 +303,7 @@ def get_DataLoaders(EncoderType):
     train_loader = DataLoader(
         train_autoencoder_dataset,
         batch_size=batch_size,
-        shuffle=True,  # shuffles data for each epoch
+        shuffle=True, 
         num_workers=2  # number of subprocesses for loading data
     )
 
@@ -327,7 +316,7 @@ def get_DataLoaders(EncoderType):
     return train_loader, test_loader
 
 
-
+'''Trains the given model_type on train set and saves the trained model+history'''
 def train_model(model_type,train_loader, model_path="Model.pth",loss_history_path="loss_history.png"):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(torch.cuda.is_available())
@@ -377,10 +366,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
-
+'''Reconstructs a color image from grayscale and predicted chrominance components'''
 def reconstruct_color_image(grayscale, predicted_uv):
     # Convert grayscale and predicted_uv to numpy arrays (H, W)
-    y_channel = grayscale.detach().numpy()[0] * 255  # [0, 255]
+    y_channel = grayscale.detach().numpy()[0] * 255  
     u_channel = predicted_uv.detach().numpy()[0] * 127.5 + 128  # [-1, 1] -> [0, 255]
     v_channel = predicted_uv.detach().numpy()[1] * 127.5 + 128  # [-1, 1] -> [0, 255]
 
@@ -393,63 +382,54 @@ def reconstruct_color_image(grayscale, predicted_uv):
     rgb_image_pil = yuv_image_pil.convert('RGB')
     rgb_image = np.array(rgb_image_pil)
 
-    # Display the reconstructed image
     plt.imshow(rgb_image)
-    plt.axis('off')  # Hide axes
+    plt.axis('off')  
     plt.show()
 
     return rgb_image
 
 
-
+'''Computes and returns the average test error over the test set'''
 def compute_test_error(model, test_loader, criterion):
-    model.eval()  # Set the model to evaluation mode
+    model.eval()  
     total_loss = 0.0
     total_samples = 0
 
-    with torch.no_grad():  # No gradient calculation during inference
+    with torch.no_grad():  
         for inputs, labels in tqdm(test_loader):
 
-            # Forward pass: get the model's output (reconstructed image)
             outputs = model(inputs)
 
-            # Compute the loss (MSE between original and reconstructed images)
             loss = criterion(outputs, labels)
 
-            total_loss += loss.item() * inputs.size(0)  # Multiply by batch size to accumulate loss
-            total_samples += inputs.size(0)  # Count total number of samples
+            total_loss += loss.item() * inputs.size(0)  
+            total_samples += inputs.size(0)  
 
-    # Average test loss
+   
     avg_loss = total_loss / total_samples
     return avg_loss
 
 if __name__ == '__main__':
     train_loader, test_loader = get_DataLoaders(ChrominanceEncoderDataset)
 
-    # Train the model
     model, history_loss = train_model(CAE_Chrominance, train_loader, model_path="cae_chrominance.pth",
                                       loss_history_path="cae_chrominance_loss.png")
 
-    # Move model to CPU for inference
     model = model.cpu()
     model.eval()
 
-    # Get a sample from the test loader
-    grayscale, _ = test_loader.dataset[0]  # Grayscale input
-    grayscale = grayscale.unsqueeze(0)  # Add batch dimension
+    grayscale, _ = test_loader.dataset[0]  
+    grayscale = grayscale.unsqueeze(0)  
 
     # Predict UV channels
     with torch.no_grad():
         predicted_uv = model(grayscale)
 
-    # Remove batch dimension for visualization
     grayscale = grayscale.squeeze(0)
     predicted_uv = predicted_uv.squeeze(0)
 
-    # Reconstruct the color image
     color_image = reconstruct_color_image(grayscale, predicted_uv)
 
-    # Compute test error
     criterion = nn.MSELoss()
     test_error = compute_test_error(model, test_loader, criterion)
     print(f'Test Error (MSE Loss): {test_error:.4f}')
